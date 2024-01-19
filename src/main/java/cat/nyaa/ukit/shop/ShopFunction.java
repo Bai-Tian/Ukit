@@ -175,13 +175,23 @@ public class ShopFunction implements Listener {
     private void createShop(Player player, String shop_type, double price, ItemStack commodity, Chest chest, Sign sign) {
         Shop shop = new Shop(shop_type, price, commodity, player.getUniqueId(), chest.getLocation());
         if(shop.save(player)) {
-            player.sendMessage(
-                    pluginInstance.language.shopLang.successToCreateShopForSell.produce(
-                            Pair.of("player", player.getName()),
-                            Pair.of("price", Double.toString(price)),
-                            Pair.of("item", commodity.getItemMeta().getDisplayName())
-                    )
-            );
+            if(shop_type.equals(pluginInstance.config.shopConfig.sellDBText)) {
+                player.sendMessage(
+                        pluginInstance.language.shopLang.successToCreateShopForSell.produce(
+                                Pair.of("player", player.getName()),
+                                Pair.of("price", Double.toString(price)),
+                                Pair.of("item", commodity.getItemMeta().getDisplayName())
+                        )
+                );
+            } else {
+                player.sendMessage(
+                        pluginInstance.language.shopLang.successToCreateShopForBuy.produce(
+                                Pair.of("player", player.getName()),
+                                Pair.of("price", Double.toString(price)),
+                                Pair.of("item", commodity.getItemMeta().getDisplayName())
+                        )
+                );
+            }
         } else {
             fail(player, sign, pluginInstance.language.shopLang.exception.produce());
         }
