@@ -4,6 +4,7 @@ import cat.nyaa.ukit.SpigotLoader;
 import land.melon.lab.simplelanguageloader.utils.Pair;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
@@ -18,6 +19,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.SignChangeEvent;
+import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.Inventory;
@@ -300,6 +302,10 @@ public class ShopFunction implements Listener {
         }
 
         Sign sign = (Sign) block;
+        if(!sign.getPersistentDataContainer().has(shopIDKey)){
+            return;
+        }
+
         Long shop_id = sign.getPersistentDataContainer().get(shopIDKey, PersistentDataType.LONG);
         if (shop_id == null) {
             return;
@@ -319,11 +325,59 @@ public class ShopFunction implements Listener {
         event.getPlayer().openInventory(chest.getInventory());
     }
 
-    // this event handler detect players when click on a shop chest
+    // this event handler implements customer logic
     @EventHandler
-    public void onInventoryOpenEvent(InventoryOpenEvent event) {
-        // TODO
+    public void onInventoryClickEvent(InventoryClickEvent event) {
+        Location location = event.getInventory().getLocation();
+        if (location == null) {
+            return;
+        }
+
+        Block block = location.getBlock();
+        if (!(block instanceof Chest chest)) {
+            return;
+        }
+
+        if(!chest.getPersistentDataContainer().has(shopIDKey)) {
+            return;
+        }
+
+        Long shop_id = chest.getPersistentDataContainer().get(shopIDKey, PersistentDataType.LONG);
+        if (shop_id == null) {
+            return;
+        }
+
+        Shop shop = getShop(shop_id);
+        if(shop == null) {
+            return;
+        }
+
+        ItemStack clickedItem = event.getCurrentItem();
+        if(clickedItem == null) {
+            return;
+        }
+
+        int clickedItemAmount = clickedItem.getAmount();
+        if(event.isLeftClick()) {
+            if(buy(shop, 1)) {
+                clickedItem.setAmount(clickedItemAmount - 1);
+            }
+        } else if (event.isRightClick()) {
+            if(buy(shop, clickedItemAmount / 2)) {
+                clickedItem.setAmount(clickedItemAmount - clickedItemAmount / 2);
+            }
+        } else if (event.isShiftClick()) {
+            if(buy(shop, clickedItemAmount)) {
+                event.getInventory().setItem(event.getSlot(), new ItemStack(Material.AIR));
+            }
+        }
+
+        event.setCancelled(true);
     }
 
-
+    private boolean buy(Shop shop, int amount) {
+        Bukkit.broadcastMessage("测试：购买了" + amount + "个 " + shop.commodity.getType());
+        // TODO
+        return true;
+    }
 }
