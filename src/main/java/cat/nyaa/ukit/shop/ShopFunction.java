@@ -20,12 +20,11 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.SignChangeEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
-import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
-import org.codehaus.plexus.util.ExceptionUtils;
+import org.jetbrains.annotations.NotNull;
 
 import java.sql.*;
 import java.util.HashMap;
@@ -81,33 +80,33 @@ public class ShopFunction implements Listener {
     @EventHandler
     public void onSignChangeEvent(SignChangeEvent event) {
         // is the editing operation on the front?
-        if(event.getSide() == Side.BACK) {
+        if (event.getSide() == Side.BACK) {
             return;
         }
 
         // is it WallSign?
         Block block = event.getBlock();
         BlockData blockData = block.getBlockData();
-        if(!(blockData instanceof WallSign)) {
+        if (!(blockData instanceof WallSign)) {
             return;
         }
 
         // is there a chest behind it?
         Chest chest = getBehindChest(block);
-        if(chest == null) {
+        if (chest == null) {
             return;
         }
 
         // get commodity item
         ItemStack commodity = getCommodity(chest);
-        if(commodity == null) {
+        if (commodity == null) {
             return;
         }
 
         // get its content
         String shopType = event.getLine(0);
         String priceString = event.getLine(1);
-        if((shopType == null) || (priceString == null)) {
+        if ((shopType == null) || (priceString == null)) {
             return;
         }
 
@@ -121,10 +120,10 @@ public class ShopFunction implements Listener {
 
         Player player = event.getPlayer();
         // does the content trigger the creation of the shop?
-        if(shopType.equals(pluginInstance.config.shopConfig.sellTriggerText)) {
-            createShop(player, pluginInstance.config.shopConfig.sellDBText, price, commodity, chest, (Sign) block);
+        if (shopType.equals(pluginInstance.config.shopConfig.sellTriggerText)) {
+            createShop(player, pluginInstance.config.shopConfig.sellDBText, price, commodity, chest, (Sign) block.getState());
         } else if (shopType.equals(pluginInstance.config.shopConfig.buyTriggerText)) {
-            createShop(player, pluginInstance.config.shopConfig.buyDBText , price, commodity, chest, (Sign) block);
+            createShop(player, pluginInstance.config.shopConfig.buyDBText, price, commodity, chest, (Sign) block.getState());
         }
     }
 
@@ -146,33 +145,24 @@ public class ShopFunction implements Listener {
 
         // insert a new row if shop_id is -1
         public boolean save() {
-            String sql;
-            String insert_sql = "INSERT INTO shop(shop_type, player_uuid, price, loc_x, loc_y, loc_z, world_name, commodity) VALUES(?, ?, ?, ?, ?, ?, ?, ?);";
-            String update_sql = "UPDATE " + pluginInstance.config.shopConfig.tableName
-                    + " SET shop_type = ?, player_uuid = ?, price = ?, loc_x = ?, loc_y = ?, loc_z = ?, world_name = ?, commodity = ? WHERE id = ?;";
-
-            if(this.shop_id == -1) {
-                sql = insert_sql;
-            } else {
-                sql = update_sql;
-            }
+            String sql = getSql();
 
             try (PreparedStatement pstmt = shopDB.prepareStatement(sql)) {
                 pstmt.setString(1, this.shop_type);
                 pstmt.setString(2, this.player_uuid.toString());
                 pstmt.setDouble(3, this.price);
-                pstmt.setInt(4, (int) this.location.getX());
-                pstmt.setInt(5, (int) this.location.getY());
-                pstmt.setInt(6, (int) this.location.getZ());
+                pstmt.setInt(4, this.location.getBlockX());
+                pstmt.setInt(5, this.location.getBlockY());
+                pstmt.setInt(6, this.location.getBlockZ());
                 pstmt.setString(7, this.location.getWorld().getName());
                 pstmt.setBytes(8, this.commodity.serializeAsBytes());
-                if(this.shop_id != -1) {
+                if (this.shop_id != -1) {
                     pstmt.setLong(9, this.shop_id);
                 }
 
                 pstmt.executeUpdate();
 
-                if(this.shop_id == -1) {
+                if (this.shop_id == -1) {
                     ResultSet generatedKeys = pstmt.getGeneratedKeys();
                     if (generatedKeys.next()) {
                         this.shop_id = generatedKeys.getLong(1);
@@ -183,6 +173,21 @@ public class ShopFunction implements Listener {
                 return false;
             }
             return true;
+        }
+
+        @NotNull
+        private String getSql() {
+            String sql;
+            String insert_sql = "INSERT INTO shop(shop_type, player_uuid, price, loc_x, loc_y, loc_z, world_name, commodity) VALUES(?, ?, ?, ?, ?, ?, ?, ?);";
+            String update_sql = "UPDATE " + pluginInstance.config.shopConfig.tableName
+                    + " SET shop_type = ?, player_uuid = ?, price = ?, loc_x = ?, loc_y = ?, loc_z = ?, world_name = ?, commodity = ? WHERE id = ?;";
+
+            if (this.shop_id == -1) {
+                sql = insert_sql;
+            } else {
+                sql = update_sql;
+            }
+            return sql;
         }
     }
 
@@ -195,12 +200,12 @@ public class ShopFunction implements Listener {
         if (!(behindBlock.getState() instanceof Chest)) {
             return null;
         }
-        return (Chest) behindBlock;
+        return (Chest) behindBlock.getState();
     }
 
     public Shop getShop(long shop_id) {
         // first find Shop from the shopMap
-        if(shopMap.containsKey(shop_id)) {
+        if (shopMap.containsKey(shop_id)) {
             return shopMap.get(shop_id);
         }
 
@@ -237,11 +242,11 @@ public class ShopFunction implements Listener {
 
     private void createShop(Player player, String shop_type, double price, ItemStack commodity, Chest chest, Sign sign) {
         Shop shop = new Shop(shop_type, price, commodity, player.getUniqueId(), sign.getLocation());
-        if(shop.save()) {
+        if (shop.save()) {
             chest.getPersistentDataContainer().set(shopIDKey, PersistentDataType.LONG, shop.shop_id);
             sign.getPersistentDataContainer().set(shopIDKey, PersistentDataType.LONG, shop.shop_id);
 
-            if(shop_type.equals(pluginInstance.config.shopConfig.sellDBText)) {
+            if (shop_type.equals(pluginInstance.config.shopConfig.sellDBText)) {
                 player.sendMessage(
                         pluginInstance.language.shopLang.successToCreateShopForSell.produce(
                                 Pair.of("player", player.getName()),
@@ -279,7 +284,7 @@ public class ShopFunction implements Listener {
     private void fail(Player player, Sign sign, String reason) {
         player.sendMessage(
                 pluginInstance.language.shopLang.fail.produce(
-                    Pair.of("reason", reason)
+                        Pair.of("reason", reason)
                 )
         );
         sign.setLine(0, "");
@@ -297,12 +302,12 @@ public class ShopFunction implements Listener {
         }
         BlockData blockData = block.getBlockData();
 
-        if((event.getAction() != Action.LEFT_CLICK_BLOCK) && (blockData instanceof WallSign)) {
+        if ((event.getAction() != Action.RIGHT_CLICK_BLOCK) || !(blockData instanceof WallSign)) {
             return;
         }
 
         Sign sign = (Sign) block;
-        if(!sign.getPersistentDataContainer().has(shopIDKey)){
+        if (!sign.getPersistentDataContainer().has(shopIDKey)) {
             return;
         }
 
@@ -312,13 +317,13 @@ public class ShopFunction implements Listener {
         }
 
         Shop shop = getShop(shop_id);
-        if(shop == null) {
+        if (shop == null) {
             return;
         }
 
         Location sign_location = shop.location;
         Chest chest = getBehindChest(sign_location.getBlock());
-        if(chest == null) {
+        if (chest == null) {
             return;
         }
 
@@ -338,7 +343,7 @@ public class ShopFunction implements Listener {
             return;
         }
 
-        if(!chest.getPersistentDataContainer().has(shopIDKey)) {
+        if (!chest.getPersistentDataContainer().has(shopIDKey)) {
             return;
         }
 
@@ -348,26 +353,26 @@ public class ShopFunction implements Listener {
         }
 
         Shop shop = getShop(shop_id);
-        if(shop == null) {
+        if (shop == null) {
             return;
         }
 
         ItemStack clickedItem = event.getCurrentItem();
-        if(clickedItem == null) {
+        if (clickedItem == null) {
             return;
         }
 
         int clickedItemAmount = clickedItem.getAmount();
-        if(event.isLeftClick()) {
-            if(buy(shop, 1)) {
+        if (event.isLeftClick()) {
+            if (buy(shop, 1)) {
                 clickedItem.setAmount(clickedItemAmount - 1);
             }
         } else if (event.isRightClick()) {
-            if(buy(shop, clickedItemAmount / 2)) {
+            if (buy(shop, clickedItemAmount / 2)) {
                 clickedItem.setAmount(clickedItemAmount - clickedItemAmount / 2);
             }
         } else if (event.isShiftClick()) {
-            if(buy(shop, clickedItemAmount)) {
+            if (buy(shop, clickedItemAmount)) {
                 event.getInventory().setItem(event.getSlot(), new ItemStack(Material.AIR));
             }
         }
