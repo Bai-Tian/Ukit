@@ -2,14 +2,12 @@ package cat.nyaa.ukit.shop;
 
 import cat.nyaa.ukit.SpigotLoader;
 import land.melon.lab.simplelanguageloader.utils.Pair;
+import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
-import org.bukkit.block.Block;
-import org.bukkit.block.BlockFace;
-import org.bukkit.block.Chest;
-import org.bukkit.block.Sign;
+import org.bukkit.block.*;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.block.data.Directional;
 import org.bukkit.block.data.type.WallSign;
@@ -124,7 +122,10 @@ public class ShopFunction implements Listener {
             createShop(player, pluginInstance.config.shopConfig.sellDBText, price, commodity, chest, (Sign) block.getState());
         } else if (shopType.equals(pluginInstance.config.shopConfig.buyTriggerText)) {
             createShop(player, pluginInstance.config.shopConfig.buyDBText, price, commodity, chest, (Sign) block.getState());
+        } else {
+            return;
         }
+        event.setCancelled(true);
     }
 
     public class Shop {
@@ -209,7 +210,7 @@ public class ShopFunction implements Listener {
             return shopMap.get(shop_id);
         }
 
-        String sql = "SELECT * FROM shop WHERE id = ?;";
+        String sql = "SELECT * FROM shop WHERE shop_id = ?;";
 
         try (PreparedStatement pstmt = shopDB.prepareStatement(sql)) {
             pstmt.setLong(1, shop_id);
@@ -244,7 +245,24 @@ public class ShopFunction implements Listener {
         Shop shop = new Shop(shop_type, price, commodity, player.getUniqueId(), sign.getLocation());
         if (shop.save()) {
             chest.getPersistentDataContainer().set(shopIDKey, PersistentDataType.LONG, shop.shop_id);
+            chest.update();
             sign.getPersistentDataContainer().set(shopIDKey, PersistentDataType.LONG, shop.shop_id);
+            sign.setWaxed(true);
+            sign.update();
+
+            // set sign content TODO: l18n (some changes need to be done on the language dependency so just leave it here for now)
+            // for some reason(which I don't know) the sign content updated on the tick which event cancelled will be ignored so we need to schedule it to the next tick
+            // also for compability with folia, use RegionScheduler here
+            // ref: https://docs.papermc.io/paper/dev/folia-support#region-scheduler
+            // the behavior of scheduler will not be effected on plain paper server but it's the way that folia works
+            pluginInstance.getServer().getRegionScheduler().execute(pluginInstance, sign.getLocation(), () -> {
+                var side = sign.getSide(Side.FRONT);
+                side.line(0, Component.text(player.getName()));
+                side.line(1, Component.text(shop_type));
+                side.line(2, Component.text("Price: " + price));
+                side.line(3, Component.text(commodity.getType().toString()));
+                sign.update();
+            });
 
             if (shop_type.equals(pluginInstance.config.shopConfig.sellDBText)) {
                 player.sendMessage(
@@ -306,7 +324,7 @@ public class ShopFunction implements Listener {
             return;
         }
 
-        Sign sign = (Sign) block;
+        Sign sign = (Sign) block.getState();
         if (!sign.getPersistentDataContainer().has(shopIDKey)) {
             return;
         }
@@ -327,6 +345,7 @@ public class ShopFunction implements Listener {
             return;
         }
 
+        event.setCancelled(true);
         event.getPlayer().openInventory(chest.getInventory());
     }
 
@@ -338,8 +357,15 @@ public class ShopFunction implements Listener {
             return;
         }
 
-        Block block = location.getBlock();
-        if (!(block instanceof Chest chest)) {
+        BlockState blockState = location.getBlock().getState();
+
+        if (blockState instanceof WallSign) {
+            Chest behindChest = getBehindChest(location.getBlock());
+            if (behindChest != null)
+                blockState = behindChest;
+        }
+
+        if (!(blockState instanceof Chest chest)) {
             return;
         }
 
