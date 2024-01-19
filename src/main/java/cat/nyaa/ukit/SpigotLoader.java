@@ -6,6 +6,7 @@ import cat.nyaa.ukit.elytra.ElytraFunction;
 import cat.nyaa.ukit.item.ItemFunction;
 import cat.nyaa.ukit.lock.LockFunction;
 import cat.nyaa.ukit.redbag.RedbagFunction;
+import cat.nyaa.ukit.shop.ShopFunction;
 import cat.nyaa.ukit.show.ShowFunction;
 import cat.nyaa.ukit.signedit.SignEditFunction;
 import cat.nyaa.ukit.sit.SitConfig;
@@ -50,6 +51,7 @@ public class SpigotLoader extends JavaPlugin implements TabExecutor {
     private ItemFunction itemFunction;
     private XpStoreFunction xpStoreFunction;
     private ElytraFunction elytraFunction;
+    private ShopFunction shopFunction;
 
     @Override
     public void onEnable() {
@@ -101,6 +103,7 @@ public class SpigotLoader extends JavaPlugin implements TabExecutor {
         itemFunction = new ItemFunction(this);
         xpStoreFunction = new XpStoreFunction(this);
         elytraFunction = new ElytraFunction(this);
+        shopFunction = new ShopFunction(this);
 
 
         //event handlers
@@ -109,6 +112,7 @@ public class SpigotLoader extends JavaPlugin implements TabExecutor {
         getServer().getPluginManager().registerEvents(xpStoreFunction, this);
         getServer().getPluginManager().registerEvents(chatFunction, this);
         getServer().getPluginManager().registerEvents(elytraFunction, this);
+        getServer().getPluginManager().registerEvents(shopFunction, this);
 
         return true;
     }

@@ -4,6 +4,7 @@ import cat.nyaa.ukit.chat.ChatLang;
 import cat.nyaa.ukit.item.ItemLang;
 import cat.nyaa.ukit.lock.LockLang;
 import cat.nyaa.ukit.redbag.RedbagLang;
+import cat.nyaa.ukit.shop.ShopLang;
 import cat.nyaa.ukit.show.ShowLang;
 import cat.nyaa.ukit.signedit.SignEditLang;
 import cat.nyaa.ukit.sit.SitLang;
@@ -19,4 +20,5 @@ public class MainLang {
     public RedbagLang redbagLang = new RedbagLang();
     public ItemLang itemLang = new ItemLang();
     public XpStoreLang xpStoreLang = new XpStoreLang();
+    public ShopLang shopLang = new ShopLang();
 }
