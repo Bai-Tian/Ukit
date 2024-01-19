@@ -118,7 +118,7 @@ public class ShopFunction implements Listener {
     }
 
     public class Shop {
-        int shop_id = -1;
+        long shop_id = -1;
         String shop_type;
         double price;
         ItemStack commodity;
@@ -133,7 +133,7 @@ public class ShopFunction implements Listener {
             this.location = location;
         }
 
-        public boolean save(Player player) {
+        public boolean save() {
             String sql;
             String insert_sql = "INSERT INTO shop(shop_type, player_uuid, price, loc_x, loc_y, loc_z, world_name, commodity) VALUES(?, ?, ?, ?, ?, ?, ?, ?);";
             String update_sql = "UPDATE " + pluginInstance.config.shopConfig.tableName
@@ -155,10 +155,16 @@ public class ShopFunction implements Listener {
                 pstmt.setString(7, this.location.getWorld().getName());
                 pstmt.setBytes(8, this.commodity.serializeAsBytes());
                 if(this.shop_id != -1) {
-                    pstmt.setInt(9, this.shop_id);
+                    pstmt.setLong(9, this.shop_id);
                 }
 
                 pstmt.executeUpdate();
+
+                ResultSet generatedKeys = pstmt.getGeneratedKeys();
+                if (generatedKeys.next()) {
+                    long insertedId = generatedKeys.getLong(1);
+
+                }
             } catch (SQLException e) {
                 pluginInstance.getLogger().warning(ExceptionUtils.getStackTrace(e));
                 return false;
@@ -166,7 +172,7 @@ public class ShopFunction implements Listener {
             return true;
         }
 
-        public static Shop find(Player player) {
+        public static Shop find() {
             // TODO
             return null;
         }
@@ -174,7 +180,7 @@ public class ShopFunction implements Listener {
 
     private void createShop(Player player, String shop_type, double price, ItemStack commodity, Chest chest, Sign sign) {
         Shop shop = new Shop(shop_type, price, commodity, player.getUniqueId(), chest.getLocation());
-        if(shop.save(player)) {
+        if(shop.save()) {
             if(shop_type.equals(pluginInstance.config.shopConfig.sellDBText)) {
                 player.sendMessage(
                         pluginInstance.language.shopLang.successToCreateShopForSell.produce(
