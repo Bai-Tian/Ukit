@@ -2,7 +2,9 @@ package cat.nyaa.ukit.shop;
 
 import cat.nyaa.ukit.SpigotLoader;
 import land.melon.lab.simplelanguageloader.utils.Pair;
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.NamespacedKey;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.Chest;
@@ -14,20 +16,30 @@ import org.bukkit.block.sign.Side;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.Action;
 import org.bukkit.event.block.SignChangeEvent;
+import org.bukkit.event.inventory.InventoryOpenEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.persistence.PersistentDataType;
 import org.codehaus.plexus.util.ExceptionUtils;
 
 import java.sql.*;
+import java.util.HashMap;
 import java.util.UUID;
 
 public class ShopFunction implements Listener {
     private final SpigotLoader pluginInstance;
-    private Connection shopDB;
+    private final NamespacedKey shopIDKey;
+    private final HashMap<Long, Shop> shopMap;
+
+    private final Connection shopDB;
 
     public ShopFunction(SpigotLoader pluginInstance) {
         this.pluginInstance = pluginInstance;
+        this.shopIDKey = new NamespacedKey(pluginInstance, "shop_id");
+        this.shopMap = new HashMap<>();
 
         try {
             Class.forName("org.sqlite.JDBC");
@@ -79,13 +91,10 @@ public class ShopFunction implements Listener {
         }
 
         // is there a chest behind it?
-        Directional directional = (Directional) blockData;
-        BlockFace blockFace = directional.getFacing();
-        Block behindBlock = block.getRelative(blockFace.getOppositeFace());
-        if (!(behindBlock.getState() instanceof Chest)) {
+        Chest chest = getBehindChest(block);
+        if(chest == null) {
             return;
         }
-        Chest chest = (Chest) behindBlock;
 
         // get commodity item
         ItemStack commodity = getCommodity(chest);
@@ -133,6 +142,7 @@ public class ShopFunction implements Listener {
             this.location = location;
         }
 
+        // insert a new row if shop_id is -1
         public boolean save() {
             String sql;
             String insert_sql = "INSERT INTO shop(shop_type, player_uuid, price, loc_x, loc_y, loc_z, world_name, commodity) VALUES(?, ?, ?, ?, ?, ?, ?, ?);";
@@ -160,27 +170,75 @@ public class ShopFunction implements Listener {
 
                 pstmt.executeUpdate();
 
-                ResultSet generatedKeys = pstmt.getGeneratedKeys();
-                if (generatedKeys.next()) {
-                    long insertedId = generatedKeys.getLong(1);
-
+                if(this.shop_id == -1) {
+                    ResultSet generatedKeys = pstmt.getGeneratedKeys();
+                    if (generatedKeys.next()) {
+                        this.shop_id = generatedKeys.getLong(1);
+                    }
                 }
             } catch (SQLException e) {
-                pluginInstance.getLogger().warning(ExceptionUtils.getStackTrace(e));
+                e.printStackTrace();
                 return false;
             }
             return true;
         }
+    }
 
-        public static Shop find() {
-            // TODO
+    // must be checked whether the Block is an instance of Sign before invoking this method
+    private Chest getBehindChest(Block sign) {
+        BlockData blockData = sign.getBlockData();
+        Directional directional = (Directional) blockData;
+        BlockFace blockFace = directional.getFacing();
+        Block behindBlock = sign.getRelative(blockFace.getOppositeFace());
+        if (!(behindBlock.getState() instanceof Chest)) {
             return null;
         }
+        return (Chest) behindBlock;
+    }
+
+    public Shop getShop(long shop_id) {
+        // first find Shop from the shopMap
+        if(shopMap.containsKey(shop_id)) {
+            return shopMap.get(shop_id);
+        }
+
+        String sql = "SELECT * FROM shop WHERE id = ?;";
+
+        try (PreparedStatement pstmt = shopDB.prepareStatement(sql)) {
+            pstmt.setLong(1, shop_id);
+
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                String shop_type = rs.getString("shop_type");
+                double price = rs.getDouble("price");
+                UUID playerUUID = UUID.fromString(rs.getString("player_uuid"));
+                Location location = new Location(
+                        Bukkit.getWorld(rs.getString("world_name")),
+                        rs.getInt("loc_x"),
+                        rs.getInt("loc_y"),
+                        rs.getInt("loc_z")
+                );
+                ItemStack commodity = ItemStack.deserializeBytes(rs.getBytes("commodity"));
+
+                Shop shop = new Shop(shop_type, price, commodity, playerUUID, location);
+                shop.shop_id = shop_id;
+
+                shopMap.put(shop_id, shop);
+                return shop;
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+        return null;
     }
 
     private void createShop(Player player, String shop_type, double price, ItemStack commodity, Chest chest, Sign sign) {
-        Shop shop = new Shop(shop_type, price, commodity, player.getUniqueId(), chest.getLocation());
+        Shop shop = new Shop(shop_type, price, commodity, player.getUniqueId(), sign.getLocation());
         if(shop.save()) {
+            chest.getPersistentDataContainer().set(shopIDKey, PersistentDataType.LONG, shop.shop_id);
+            sign.getPersistentDataContainer().set(shopIDKey, PersistentDataType.LONG, shop.shop_id);
+
             if(shop_type.equals(pluginInstance.config.shopConfig.sellDBText)) {
                 player.sendMessage(
                         pluginInstance.language.shopLang.successToCreateShopForSell.produce(
@@ -203,6 +261,7 @@ public class ShopFunction implements Listener {
         }
     }
 
+    // find the first item in the chest
     private ItemStack getCommodity(Chest chest) {
         Inventory inventory = chest.getInventory();
 
@@ -214,6 +273,7 @@ public class ShopFunction implements Listener {
         return null;
     }
 
+    // clear all the lines of the sign if failed
     private void fail(Player player, Sign sign, String reason) {
         player.sendMessage(
                 pluginInstance.language.shopLang.fail.produce(
@@ -225,4 +285,45 @@ public class ShopFunction implements Listener {
         sign.setLine(2, "");
         sign.setLine(3, "");
     }
+
+    // this event handler helps players who click on a shop sign to open the chest located behind it
+    @EventHandler
+    public void onPlayerInteractEvent(PlayerInteractEvent event) {
+        Block block = event.getClickedBlock();
+        if (block == null) {
+            return;
+        }
+        BlockData blockData = block.getBlockData();
+
+        if((event.getAction() != Action.LEFT_CLICK_BLOCK) && (blockData instanceof WallSign)) {
+            return;
+        }
+
+        Sign sign = (Sign) block;
+        Long shop_id = sign.getPersistentDataContainer().get(shopIDKey, PersistentDataType.LONG);
+        if (shop_id == null) {
+            return;
+        }
+
+        Shop shop = getShop(shop_id);
+        if(shop == null) {
+            return;
+        }
+
+        Location sign_location = shop.location;
+        Chest chest = getBehindChest(sign_location.getBlock());
+        if(chest == null) {
+            return;
+        }
+
+        event.getPlayer().openInventory(chest.getInventory());
+    }
+
+    // this event handler detect players when click on a shop chest
+    @EventHandler
+    public void onInventoryOpenEvent(InventoryOpenEvent event) {
+        // TODO
+    }
+
+
 }
