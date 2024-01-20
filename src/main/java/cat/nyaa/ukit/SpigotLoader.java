@@ -164,6 +164,9 @@ public class SpigotLoader extends JavaPlugin implements TabExecutor {
             case XP ->
                     invokeCommand(xpStoreFunction, sender, command, label, argTruncated);
 
+            case ELYTRA ->
+                    invokeCommand(elytraFunction, sender, command, label, argTruncated);
+
         }
         return true;
     }
@@ -192,6 +195,8 @@ public class SpigotLoader extends JavaPlugin implements TabExecutor {
                     itemFunction != null && itemFunction.checkPermission(commandSender);
             case XP ->
                     xpStoreFunction != null && xpStoreFunction.checkPermission(commandSender);
+            case ELYTRA ->
+                    elytraFunction != null && elytraFunction.checkPermission(commandSender);
             case RELOAD -> commandSender.hasPermission(RELOAD_PERMISSION_NODE);
         };
     }
@@ -261,6 +266,7 @@ public class SpigotLoader extends JavaPlugin implements TabExecutor {
         CHAT,
         REDBAG,
         ITEM,
-        XP
+        XP,
+        ELYTRA
     }
 }
