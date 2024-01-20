@@ -16,6 +16,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.SignChangeEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
@@ -94,6 +95,11 @@ public class ShopFunction implements Listener {
             return;
         }
 
+        // is this chest a shop chest?
+        if(getShopByChest(chest.getBlock()) != null) {
+            return;
+        }
+
         // get commodity item
         ItemStack commodity = getCommodity(chest);
         if (commodity == null) {
@@ -125,18 +131,6 @@ public class ShopFunction implements Listener {
             return;
         }
         event.setCancelled(true);
-    }
-
-    // must be checked whether the Block is an instance of Sign before invoking this method
-    private Chest getBehindChest(Block sign) {
-        BlockData blockData = sign.getBlockData();
-        Directional directional = (Directional) blockData;
-        BlockFace blockFace = directional.getFacing();
-        Block behindBlock = sign.getRelative(blockFace.getOppositeFace());
-        if (!(behindBlock.getState() instanceof Chest)) {
-            return null;
-        }
-        return (Chest) behindBlock.getState();
     }
 
     public Shop getShop(long shop_id) {
@@ -233,6 +227,66 @@ public class ShopFunction implements Listener {
         return null;
     }
 
+    private Shop getShopBySign(Block block) {
+        BlockData blockData = block.getBlockData();
+
+        if (!(blockData instanceof WallSign)) {
+            return null;
+        }
+
+        Sign sign = (Sign) block.getState();
+        if (!sign.getPersistentDataContainer().has(shopIDKey)) {
+            return null;
+        }
+
+        Long shop_id = sign.getPersistentDataContainer().get(shopIDKey, PersistentDataType.LONG);
+        if (shop_id == null) {
+            return null;
+        }
+
+        return getShop(shop_id);
+    }
+
+    private Shop getShopByChest(Block block) {
+        BlockState blockState = block.getState();
+
+        if (!(blockState instanceof Chest chest)) {
+            return null;
+        }
+
+        if (!chest.getPersistentDataContainer().has(shopIDKey)) {
+            return null;
+        }
+
+        Long shop_id = chest.getPersistentDataContainer().get(shopIDKey, PersistentDataType.LONG);
+        if (shop_id == null) {
+            return null;
+        }
+
+        return getShop(shop_id);
+    }
+
+    // must be checked whether the Block is an instance of Sign before invoking this method
+    private Chest getBehindChest(Block sign) {
+        BlockData blockData = sign.getBlockData();
+        Directional directional = (Directional) blockData;
+        BlockFace blockFace = directional.getFacing();
+        Block behindBlock = sign.getRelative(blockFace.getOppositeFace());
+        if (!(behindBlock.getState() instanceof Chest)) {
+            return null;
+        }
+        return (Chest) behindBlock.getState();
+    }
+
+    private Chest getShopChestBySign(Block block) {
+        Shop shop = getShopBySign(block);
+        if(shop == null) {
+            return null;
+        }
+
+        return getBehindChest(shop.location.getBlock());
+    }
+
     // clear all the lines of the sign if failed
     private void fail(Player player, Sign sign, String reason) {
         player.sendMessage(
@@ -246,6 +300,104 @@ public class ShopFunction implements Listener {
         sign.setLine(3, "");
     }
 
+    public boolean deleteShop(long shop_id) {
+        String sql = "DELETE FROM " + pluginInstance.config.shopConfig.tableName + " WHERE shop_id = ?;";
+
+        try (PreparedStatement pstmt = shopDB.prepareStatement(sql)) {
+            pstmt.setLong(1, shop_id);
+            int rowsAffected = pstmt.executeUpdate();
+
+            shopMap.remove(shop_id); // remove from HashMap
+            return true;
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+        // why can not delete ?!
+        pluginInstance.getLogger().warning("CAN NOT DELETE SHOP FROM DATABASE! (shop_id: " + shop_id + ")");
+        return false;
+    }
+
+    @EventHandler
+    public void onBlockBreakEvent(BlockBreakEvent event) {
+        Block block = event.getBlock();
+        Shop shop;
+
+        // if it is Shop Sign
+        shop = getShopBySign(block);
+        if (shop != null) {
+            // if not master or OP
+            if((!shop.getPlayer_uuid().equals(event.getPlayer().getUniqueId())) || (!event.getPlayer().isOp())) {
+                event.getPlayer().sendMessage(
+                        pluginInstance.language.shopLang.canNotBreak.produce(
+                                Pair.of("player", Bukkit.getOfflinePlayer(shop.getPlayer_uuid()).getName())
+                        )
+                );
+                event.setCancelled(true);
+                return;
+            }
+
+            // delete the shop in the database
+            if(!deleteShop(shop.shop_id)) {
+                event.getPlayer().sendMessage(
+                        pluginInstance.language.shopLang.fail.produce(
+                                Pair.of("reason", pluginInstance.language.shopLang.exception.produce())
+                        )
+                );
+                event.setCancelled(true);
+                return;
+            }
+
+            // the sign has already break now, no need to care about its PersistentDataContainer
+
+            Chest chest = getBehindChest(block);
+            if (chest != null) {
+                chest.getPersistentDataContainer().remove(shopIDKey);
+                chest.update();
+            }
+
+            event.getPlayer().sendMessage(
+                    pluginInstance.language.shopLang.successToDeleteShop.produce(
+                            Pair.of("player", Bukkit.getOfflinePlayer(shop.getPlayer_uuid()).getName())
+                    )
+            );
+            return;
+        }
+
+        // if it is Shop Chest
+        shop = getShopByChest(block);
+        if (shop != null) {
+            // if not master or OP
+            if((!shop.getPlayer_uuid().equals(event.getPlayer().getUniqueId())) || (!event.getPlayer().isOp())) {
+                event.getPlayer().sendMessage(
+                        pluginInstance.language.shopLang.canNotBreak.produce(
+                                Pair.of("player", Bukkit.getOfflinePlayer(shop.getPlayer_uuid()).getName())
+                        )
+                );
+                event.setCancelled(true);
+                return;
+            }
+
+            // delete the shop in the database
+            if(!deleteShop(shop.shop_id)) {
+                event.getPlayer().sendMessage(
+                        pluginInstance.language.shopLang.fail.produce(
+                                Pair.of("reason", pluginInstance.language.shopLang.exception.produce())
+                        )
+                );
+                event.setCancelled(true);
+            }
+
+            // the chest has already break now, no need to care about its PersistentDataContainer
+            // the sign will break when the chest behind it is destroyed, no need to care about its PersistentDataContainer
+            event.getPlayer().sendMessage(
+                    pluginInstance.language.shopLang.successToDeleteShop.produce(
+                            Pair.of("player", Bukkit.getOfflinePlayer(shop.getPlayer_uuid()).getName())
+                    )
+            );
+        }
+    }
+    
     // this event handler helps players who click on a shop sign to open the chest located behind it
     @EventHandler
     public void onPlayerInteractEvent(PlayerInteractEvent event) {
