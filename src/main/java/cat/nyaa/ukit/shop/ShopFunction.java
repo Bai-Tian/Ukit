@@ -323,6 +323,8 @@ public class ShopFunction implements Listener {
             return;
         }
 
+        Bukkit.broadcastMessage("点击了" + event.getInventory().getType().name() + " 格子" + event.getRawSlot());
+
         int clickedItemAmount = clickedItem.getAmount();
         if (event.isLeftClick()) {
             if (buy(shop, 1)) {
@@ -334,7 +336,7 @@ public class ShopFunction implements Listener {
             }
         } else if (event.isShiftClick()) {
             if (buy(shop, clickedItemAmount)) {
-                event.getInventory().setItem(event.getSlot(), new ItemStack(Material.AIR));
+                event.getInventory().setItem(event.getRawSlot(), new ItemStack(Material.AIR));
             }
         }
 
