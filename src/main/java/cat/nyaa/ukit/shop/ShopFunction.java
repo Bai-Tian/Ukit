@@ -327,7 +327,7 @@ public class ShopFunction implements Listener {
         shop = getShopBySign(block);
         if (shop != null) {
             // if not master or OP
-            if((!shop.getPlayer_uuid().equals(event.getPlayer().getUniqueId())) || (!event.getPlayer().isOp())) {
+            if (!(shop.player_uuid.equals(event.getPlayer().getUniqueId()) || event.getPlayer().isOp())) {
                 event.getPlayer().sendMessage(
                         pluginInstance.language.shopLang.canNotBreak.produce(
                                 Pair.of("player", Bukkit.getOfflinePlayer(shop.getPlayer_uuid()).getName())
@@ -368,7 +368,7 @@ public class ShopFunction implements Listener {
         shop = getShopByChest(block);
         if (shop != null) {
             // if not master or OP
-            if((!shop.getPlayer_uuid().equals(event.getPlayer().getUniqueId())) || (!event.getPlayer().isOp())) {
+            if (!(shop.player_uuid.equals(event.getPlayer().getUniqueId()) || event.getPlayer().isOp())) {
                 event.getPlayer().sendMessage(
                         pluginInstance.language.shopLang.canNotBreak.produce(
                                 Pair.of("player", Bukkit.getOfflinePlayer(shop.getPlayer_uuid()).getName())
